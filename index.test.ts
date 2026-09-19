@@ -21,7 +21,8 @@ function toolNames(): string[] {
   const block = SRC.match(/\nconst TOOLS = \[([\s\S]*?)\n\];/);
   assert(block, "TOOLS array not found");
   const names = [...block[1].matchAll(/^\s+name: "([a-z_0-9]+)",/gm)].map((m) => m[1]);
-  assert(names.length >= 15, `parsed only ${names.length} tool names — the parser is broken, not the list`);
+  assertEquals(names.length, [...block[1].matchAll(/\bname:\s*"/g)].length,
+    "the TOOLS parser missed an entry — fix the regex, not the list");
   return names;
 }
 
@@ -30,10 +31,15 @@ function toolActions(): Record<string, string> {
   const block = SRC.match(/const TOOL_ACTION: Record<string, string> = \{([\s\S]*?)\n\};/);
   assert(block, "TOOL_ACTION map not found");
   const map: Record<string, string> = {};
-  for (const m of block[1].matchAll(/^\s*([a-z_0-9]+):\s*"([a-z0-9_]+)",?\s*$/gm)) map[m[1]] = m[2];
-  // A reformat that defeats the regex must fail loudly, not empty the map and
-  // let every assertion below pass vacuously.
-  assert(Object.keys(map).length >= 12, `TOOL_ACTION parsed only ${Object.keys(map).length} entries — the parser is broken, not the map`);
+  for (const m of block[1].matchAll(/^\s*([a-z_0-9]+):\s*"([a-z0-9_]+)",?\s*(\/\/.*)?$/gm)) map[m[1]] = m[2];
+  // Cross-check the strict parse against a loose count of the same block. A
+  // fixed floor cannot do this job: it passes when ONE entry slips the regex
+  // (17 of 18 still clears any floor), and it fires falsely when tools are
+  // legitimately retired, telling the next maintainer the parser is broken when
+  // it is working perfectly. Counting entries two ways catches both.
+  const loose = [...block[1].matchAll(/^\s*[a-z_0-9]+\s*:/gm)].length;
+  assertEquals(Object.keys(map).length, loose,
+    "the TOOL_ACTION parser missed an entry — fix the regex, not the map");
   return map;
 }
 
@@ -108,7 +114,8 @@ Deno.test("annotations and tools name the same set", () => {
   const block = SRC.match(/const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = \{([\s\S]*?)\n\};/);
   assert(block, "TOOL_ANNOTATIONS not found");
   const annotated = [...block[1].matchAll(/^\s*([a-z_0-9]+):\s*\{/gm)].map((m) => m[1]);
-  assert(annotated.length >= 15, `parsed only ${annotated.length} annotations — the parser is broken`);
+  assertEquals(annotated.length, [...block[1].matchAll(/^\s*[a-z_0-9]+\s*:/gm)].length,
+    "the TOOL_ANNOTATIONS parser missed an entry — fix the regex, not the map");
   const names = new Set(toolNames());
   for (const a of annotated) assert(names.has(a), `TOOL_ANNOTATIONS still annotates '${a}', which is not on tools/list`);
   for (const n of names) assert(annotated.includes(n), `tool '${n}' has no annotation`);
