@@ -4,7 +4,7 @@
   "title": "SoapBox Faith",
   "description": "Faith tools for AI agents: cited KJV Scripture, ORA Q&A, sermons, churches, prayer & giving.",
   "websiteUrl": "https://soapboxsuperapp.com/for-agents",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "remotes": [
     {
       "type": "streamable-http",

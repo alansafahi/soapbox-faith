@@ -21,7 +21,7 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const PROTOCOL_VERSION = "2025-06-18";
-const SERVER = { name: "soapbox-faith", version: "1.2.0" };
+const SERVER = { name: "soapbox-faith", version: "2.0.0" };
 // Defaults to the public production host so this server works out of the box
 // (all forwarded read tools are keyless); override SUPABASE_URL to point elsewhere.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "https://foyekanoxpnkydoibaas.supabase.co";
@@ -55,12 +55,13 @@ const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   find_churches:        { title: "Find Churches", readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   score_doctrinal_fit:  { title: "Score Doctrinal Fit", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   get_lectionary:       { title: "Get Lectionary Readings", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  get_credit_balance:   { title: "Get API Key Status", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  get_api_key_status:   { title: "Get API Key Status", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   check_prayer_status:  { title: "Check Prayer Status", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   get_faith_context:    { title: "Get Faith Context", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  // --- WRITE / ACTION (readOnlyHint: false, destructiveHint: false — none destructive) ---
+  // --- WRITE / ACTION (readOnlyHint: false; destructiveHint true only for give_to_church) ---
   submit_prayer_request:{ title: "Submit Prayer Request", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
-  give_to_church:       { title: "Give to a Church", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+  // Moves the member's money and cannot be undone, so clients should confirm.
+  give_to_church:       { title: "Give to a Church", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   synthesize_speech:    { title: "Synthesize Speech", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   // --- x402 keyless payment (agent-native; also a write/action) ---
   pay_with_x402:        { title: "Pay with x402 (USDC on Base)", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
@@ -230,9 +231,10 @@ const TOOLS = [
   {
     name: "pay_with_x402",
     description:
-      "Pay for a paid sermon or bundle per-call in USDC on Base using the x402 protocol. This is the ONLY way an " +
-      "agent can buy SoapBox faith content: the old prepaid marketplace-credit tools were retired on 2026-07-15 and " +
-      "their endpoints now answer HTTP 410. No SoapBox account or API key is required — the payment IS the " +
+      "Pay for a paid sermon or bundle per-call in USDC on Base using the x402 protocol. This is the only TOOL " +
+      "here that buys SoapBox faith content: the prepaid marketplace-credit tools were retired on 2026-07-15 and " +
+      "their endpoints now answer HTTP 410. (A person can instead buy on the item's web_url in a browser.) " +
+      "No SoapBox account or API key is required — the payment IS the " +
       "credential (https://github.com/coinbase/x402). SoapBox is the Merchant of Record: the church keeps 70% of " +
       "net and SoapBox takes 30%. This is a content SALE, never a donation — donations go 100% to the church via " +
       "give_to_church. Works for a single sermon (sermon_id) or a whole series (bundle_id). " +
@@ -252,12 +254,14 @@ const TOOLS = [
     },
   },
   {
-    name: "get_credit_balance",
+    name: "get_api_key_status",
     description:
-      "Report this API key's tier and daily rate limit. NOTE: prepaid marketplace credits were retired on " +
-      "2026-07-15, so marketplace_credits_cents is always 0 and there is no top-up — this tool cannot tell you " +
-      "whether you can afford content. To buy paid sermons or bundles, pay per-call with pay_with_x402 (USDC on " +
-      "Base); no balance is needed. Use this only to see your rate limit.",
+      "Report this API key's tier and daily rate limit — how many calls you have per day, not what you can " +
+      "afford. Nothing here gates a purchase: paid sermons and bundles are bought per-call with pay_with_x402 " +
+      "(USDC on Base), which needs no key and no balance at all. " +
+      "This tool was called get_credit_balance until the prepaid marketplace-credit wallet was retired on " +
+      "2026-07-15; the old name still works but is no longer listed, and the marketplace_credits_cents field it " +
+      "returns is always 0 and means nothing. Do not read it as 'out of funds'.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -348,6 +352,9 @@ const TOOL_ACTION: Record<string, string> = {
   ask_ora: "ora",
   search_sermons: "sermon_search",
   get_sermon: "sermon_get",
+  get_api_key_status: "balance",
+  // Undocumented alias: agents wired to the pre-2.0.0 name keep working, but it
+  // is absent from TOOLS so tools/list no longer advertises a "credit balance".
   get_credit_balance: "balance",
   get_faith_context: "context",
   get_lectionary: "lectionary",
@@ -487,7 +494,7 @@ Deno.serve(async (req: Request) => {
       // Free read tools work with no key (faith-content-api enforces the same set
       // + a per-IP limit). Money/consent tools require a key.
       if (!apiKey && !FREE_TOOLS.has(name)) {
-        return json(rpcResult(id, { content: [{ type: "text", text: `Tool '${name}' needs a SoapBox API key (Authorization: Bearer <key>). Free tools (${[...FREE_TOOLS].join(", ")}) need none. Get a key at https://soapboxsuperapp.com/developers` }], isError: true }));
+        return json(rpcResult(id, { content: [{ type: "text", text: `Tool '${name}' needs a SoapBox API key (Authorization: Bearer <key>). Free tools (${[...FREE_TOOLS].join(", ")}) and pay_with_x402 need none. Get a key at https://soapboxsuperapp.com/developers` }], isError: true }));
       }
       const args = (params?.arguments ?? {}) as Record<string, unknown>;
       const { ok, data } = await callApi(apiKey, action, args);

@@ -20,7 +20,9 @@ const SERVER_JSON = JSON.parse(Deno.readTextFileSync(new URL("./server.json", im
 function toolNames(): string[] {
   const block = SRC.match(/\nconst TOOLS = \[([\s\S]*?)\n\];/);
   assert(block, "TOOLS array not found");
-  return [...block[1].matchAll(/^\s{4}name: "([a-z_0-9]+)",/gm)].map((m) => m[1]);
+  const names = [...block[1].matchAll(/^\s+name: "([a-z_0-9]+)",/gm)].map((m) => m[1]);
+  assert(names.length >= 15, `parsed only ${names.length} tool names — the parser is broken, not the list`);
+  return names;
 }
 
 /** The tool -> upstream action map. */
@@ -28,7 +30,10 @@ function toolActions(): Record<string, string> {
   const block = SRC.match(/const TOOL_ACTION: Record<string, string> = \{([\s\S]*?)\n\};/);
   assert(block, "TOOL_ACTION map not found");
   const map: Record<string, string> = {};
-  for (const m of block[1].matchAll(/^\s*([a-z_0-9]+):\s*"([a-z_]+)",/gm)) map[m[1]] = m[2];
+  for (const m of block[1].matchAll(/^\s*([a-z_0-9]+):\s*"([a-z0-9_]+)",?\s*$/gm)) map[m[1]] = m[2];
+  // A reformat that defeats the regex must fail loudly, not empty the map and
+  // let every assertion below pass vacuously.
+  assert(Object.keys(map).length >= 12, `TOOL_ACTION parsed only ${Object.keys(map).length} entries — the parser is broken, not the map`);
   return map;
 }
 
@@ -88,6 +93,25 @@ Deno.test("pay_with_x402 is documented as keyless, because it is", () => {
   for (const gone of RETIRED_TOOLS) {
     assert(!table[1].includes(gone) && !table[2].includes(gone), `README still advertises ${gone}`);
   }
+});
+
+Deno.test("give_to_church is flagged destructive, so clients confirm before it moves money", () => {
+  const block = SRC.match(/const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = \{([\s\S]*?)\n\};/);
+  assert(block, "TOOL_ANNOTATIONS not found");
+  const give = block[1].match(/^\s*give_to_church:\s*\{([^}]*)\}/m);
+  assert(give, "give_to_church has no annotation");
+  assert(/destructiveHint:\s*true/.test(give[1]),
+    "give_to_church moves a member's money irreversibly and must carry destructiveHint: true");
+});
+
+Deno.test("annotations and tools name the same set", () => {
+  const block = SRC.match(/const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = \{([\s\S]*?)\n\};/);
+  assert(block, "TOOL_ANNOTATIONS not found");
+  const annotated = [...block[1].matchAll(/^\s*([a-z_0-9]+):\s*\{/gm)].map((m) => m[1]);
+  assert(annotated.length >= 15, `parsed only ${annotated.length} annotations — the parser is broken`);
+  const names = new Set(toolNames());
+  for (const a of annotated) assert(names.has(a), `TOOL_ANNOTATIONS still annotates '${a}', which is not on tools/list`);
+  for (const n of names) assert(annotated.includes(n), `tool '${n}' has no annotation`);
 });
 
 Deno.test("the registry manifest does not promise a key buys sermons", () => {

@@ -14,11 +14,11 @@ Faith tools for AI agents: cited, public-domain (KJV) Scripture, ORA Bible Q&A, 
 
 | Free (no key) | Key required |
 |---|---|
-| `verify_scripture` · `get_verse` · `lookup_strongs` · `find_churches` · `ask_ora` · `search_sermons` · `get_sermon` · `get_lectionary` · `browse_catalog` · `score_doctrinal_fit` · `pay_with_x402` | `synthesize_speech` · `get_credit_balance` · `submit_prayer_request` · `check_prayer_status` · `give_to_church` · `get_faith_context` |
+| `verify_scripture` · `get_verse` · `lookup_strongs` · `find_churches` · `ask_ora` · `search_sermons` · `get_sermon` · `get_lectionary` · `browse_catalog` · `score_doctrinal_fit` · `pay_with_x402` | `synthesize_speech` · `get_api_key_status` · `submit_prayer_request` · `check_prayer_status` · `give_to_church` · `get_faith_context` |
 
 Prayer and giving additionally require an explicit, user-issued **consent token** (they act on a real person's behalf). Prayer *submits a request to a live human community prayer wall* — the AI does not "pray for you." Giving is passthrough — SoapBox takes no cut of donations.
 
-**Buying content.** `pay_with_x402` is keyless — the payment itself is the credential — and it is the only way an agent buys a paid sermon or bundle. The prepaid marketplace-credit tools (`purchase_sermon`, `purchase_bundle`) were retired on 2026-07-15: their endpoints answer HTTP 410, and they are no longer listed. A purchase is a content **sale**, never a donation — the church keeps 70% of net and SoapBox is Merchant of Record on sales only. `get_credit_balance` survives only to report your key's tier and daily rate limit; its balance is always 0.
+**Buying content.** `pay_with_x402` is keyless — the payment itself is the credential — and it is the only way an agent buys a paid sermon or bundle. The prepaid marketplace-credit tools (`purchase_sermon`, `purchase_bundle`) were retired on 2026-07-15: their endpoints answer HTTP 410, and they are no longer listed. A purchase is a content **sale**, never a donation — the church keeps 70% of net and SoapBox is Merchant of Record on sales only. `get_api_key_status` (called `get_credit_balance` before 2.0.0, which still routes but is unlisted) survives only to report your key's tier and daily rate limit; its balance field is always 0 and gates nothing.
 
 ## Connect from Claude (remote MCP)
 
