@@ -240,16 +240,19 @@ const TOOLS = [
       "give_to_church. Works for a single sermon (sermon_id) or a whole series (bundle_id). " +
       "Two-step, exactly per spec: (1) call with just the sermon_id (or bundle_id) and NO payment to get back the " +
       "HTTP-402 payment requirements — the USDC amount, asset, network ('base'), and SoapBox's payTo receive " +
-      "address. (2) Send USDC on Base to that payTo, then call again with x_payment set to a base64-encoded JSON " +
-      "payload carrying your broadcast Base tx hash ({\"txHash\":\"0x...\"}) — SoapBox verifies the on-chain " +
-      "transfer, records the sale (church keeps 70%), and returns the transcript. Idempotent per tx hash. " +
+      "address. (2) Send EXACTLY maxAmountRequired USDC on Base to payTo — any other amount is refused. Sign the " +
+      "402's onchainPayment.message (your tx hash in lower case, and the item) with the wallet that paid, then " +
+      "call again with x_payment set to base64 of {\"txHash\":\"0x...\",\"signature\":\"0x...\"} — SoapBox checks " +
+      "the on-chain transfer came from the signing wallet, records the sale (church keeps 70%), and returns the " +
+      "transcript. The signature is required: tx hashes are public, and it is what stops anyone else spending your " +
+      "payment. An EOA signs with personal_sign; a smart wallet answers ERC-1271. Idempotent per tx hash. " +
       "Gasless EIP-3009 'exact' payments via an x402 facilitator are also accepted in the same x_payment field.",
     inputSchema: {
       type: "object",
       properties: {
         sermon_id: { type: "string", description: "The sermon to pay for. Provide exactly one of sermon_id or bundle_id.", format: "uuid", examples: ["ffffbeb3-41ee-482a-9c04-a592995ab821"] },
         bundle_id: { type: "string", description: "The bundle to pay for. Provide exactly one of sermon_id or bundle_id.", format: "uuid", examples: ["a1b2c3d4-1111-2222-3333-444455556666"] },
-        x_payment: { type: "string", description: "Step 2 only: a base64-encoded JSON x402 payment payload (e.g. base64 of {\"txHash\":\"0x...\"} for an on-chain Base USDC transfer, or an EIP-3009 authorization for a facilitator). Omit entirely on step 1 to receive the HTTP-402 payment requirements.", examples: ["eyJ0eEhhc2giOiIweGFiYzEyMy4uLiJ9"] },
+        x_payment: { type: "string", description: "Step 2 only: a base64-encoded JSON x402 payment payload (e.g. base64 of {\"txHash\":\"0x...\",\"signature\":\"0x...\"} for an on-chain Base USDC transfer, signed by the paying wallet as the 402's onchainPayment says, or an EIP-3009 authorization for a facilitator). Omit entirely on step 1 to receive the HTTP-402 payment requirements.", examples: ["eyJ0eEhhc2giOiIweGFiYzEyMy4uLiIsInNpZ25hdHVyZSI6IjB4ZGVmNDU2Li4uIn0="] },
       },
     },
   },
