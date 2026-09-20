@@ -128,3 +128,24 @@ Deno.test("the registry manifest does not promise a key buys sermons", () => {
   assertEquals(SERVER_JSON.version, SRC.match(/const SERVER = \{ name: "soapbox-faith", version: "([^"]+)" \}/)![1],
     "server.json and the SERVER constant disagree on the version");
 });
+
+Deno.test("pay_with_x402 still tells agents to sign for their own payment", () => {
+  // A tx hash is public, so a hash alone let anyone watching SoapBox's receive
+  // address spend a paying agent's payment first — they got the sermon, the
+  // agent got "this transaction was already used". Alan's fix (4f5d128, and
+  // soapbox-backend #617) makes step 2 carry a signature as well.
+  //
+  // This assertion exists because that fix is easy to revert by accident: any
+  // PR rewording this description, including the credit-wallet rewrite this
+  // file belongs to, merges CLEANLY over it while quietly reinstating the
+  // hash-only instructions the server now refuses.
+  const block = SRC.match(/\nconst TOOLS = \[([\s\S]*?)\n\];/)![1];
+  const desc = block.slice(block.indexOf('name: "pay_with_x402"'), block.indexOf("inputSchema", block.indexOf('name: "pay_with_x402"')));
+  assert(/signature/i.test(desc), "the x402 description no longer mentions a signature");
+  assert(/onchainPayment/.test(desc), "it should point agents at the 402's onchainPayment field, not at a bare hash");
+  assert(/\\"signature\\":/.test(desc) || /signature":/.test(desc),
+    "the x_payment example dropped its signature field");
+  // The hash-only payload must not be presented as sufficient anywhere.
+  const hashOnly = /\{\s*\\?"txHash\\?"\s*:\s*\\?"0x[^"]*\\?"\s*\}/;
+  assert(!hashOnly.test(desc), "a hash-only x_payment example is back; the server refuses that");
+});
