@@ -1,0 +1,19 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  deno:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Type-checks the server and runs the tool-surface assertions, which keep
+      # tools/list, the README and server.json in step with what agents can call.
+      - run: deno check index.ts
+      - run: deno test --allow-read index.test.ts

@@ -21,7 +21,7 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const PROTOCOL_VERSION = "2025-06-18";
-const SERVER = { name: "soapbox-faith", version: "1.1.1" };
+const SERVER = { name: "soapbox-faith", version: "2.0.0" };
 // Defaults to the public production host so this server works out of the box
 // (all forwarded read tools are keyless); override SUPABASE_URL to point elsewhere.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "https://foyekanoxpnkydoibaas.supabase.co";
@@ -55,12 +55,10 @@ const TOOL_ANNOTATIONS: Record<string, ToolAnnotations> = {
   find_churches:        { title: "Find Churches", readOnlyHint: true, destructiveHint: false, openWorldHint: true },
   score_doctrinal_fit:  { title: "Score Doctrinal Fit", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   get_lectionary:       { title: "Get Lectionary Readings", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-  get_credit_balance:   { title: "Get Credit Balance", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+  get_api_key_status:   { title: "Get API Key Status", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   check_prayer_status:  { title: "Check Prayer Status", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   get_faith_context:    { title: "Get Faith Context", readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   // --- WRITE / ACTION (readOnlyHint: false; destructiveHint true only for give_to_church) ---
-  purchase_sermon:      { title: "Purchase a Sermon", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  purchase_bundle:      { title: "Purchase a Bundle", readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   submit_prayer_request:{ title: "Submit Prayer Request", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   // Moves the user's money and can't be undone from here: clients should confirm with the user first.
   give_to_church:       { title: "Give to a Church", readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -220,7 +218,8 @@ const TOOLS = [
       "Fetch full metadata and (optionally) the transcript for ONE sermon by its id — typically a sermon_id " +
       "returned by search_sermons. Only returns sermons a pastor has opted in to share with agents; otherwise " +
       "returns not-found. If the sermon is paid and you haven't purchased it, the transcript is withheld and a " +
-      "price is returned — call purchase_sermon first. Free sermons return the transcript directly.",
+      "price is returned — pay for it with pay_with_x402 (USDC on Base), which returns the transcript. Free " +
+      "sermons return the transcript directly.",
     inputSchema: {
       type: "object",
       properties: {
@@ -231,43 +230,20 @@ const TOOLS = [
     },
   },
   {
-    name: "purchase_sermon",
-    description:
-      "Buy permanent access to a paid sermon using your prepaid marketplace credits. SoapBox is the Merchant of " +
-      "Record: the church keeps 70% and SoapBox takes a 30% platform fee (this is a content SALE, NOT a donation — " +
-      "donations always go 100% directly to the church). After purchase, get_sermon returns the full transcript. " +
-      "Purchases are idempotent (buying the same sermon twice won't double-charge). If you have insufficient " +
-      "credits, check get_credit_balance and top up. No key / no credits? Pay per-call in USDC on Base via x402 " +
-      "instead — call pay_with_x402 with this sermon_id (agent-native, no SoapBox account).",
-    inputSchema: {
-      type: "object",
-      properties: {
-        sermon_id: { type: "string", description: "The paid sermon to purchase, e.g. a sermon_id from search_sermons or browse_catalog.", format: "uuid", examples: ["ffffbeb3-41ee-482a-9c04-a592995ab821"] },
-      },
-      required: ["sermon_id"],
-    },
-  },
-  {
-    name: "purchase_bundle",
-    description:
-      "Buy a bundle (a sermon series — multiple sermons sold together at one price) using prepaid marketplace " +
-      "credits. Grants access to EVERY sermon in the bundle. Same terms as purchase_sermon: church keeps 70% of net, " +
-      "SoapBox 30% (a content sale, not a donation). Idempotent. Find bundles via browse_catalog (type: bundle). " +
-      "No key / no credits? Pay per-call in USDC on Base via x402 — call pay_with_x402 with this bundle_id.",
-    inputSchema: {
-      type: "object",
-      properties: { bundle_id: { type: "string", description: "The bundle's id — the product_id from browse_catalog where type=bundle.", format: "uuid", examples: ["a1b2c3d4-1111-2222-3333-444455556666"] } },
-      required: ["bundle_id"],
-    },
-  },
-  {
     name: "pay_with_x402",
     description:
-      "Pay for a paid sermon or bundle per-call in USDC on Base using the x402 protocol — the AGENT-NATIVE rail, " +
-      "no SoapBox account, API key, or prepaid credits required (https://github.com/coinbase/x402). " +
+      "Pay for a paid sermon or bundle per-call in USDC on Base using the x402 protocol. This is the only TOOL " +
+      "here that buys SoapBox faith content: the prepaid marketplace-credit tools were retired on 2026-07-15 and " +
+      "their endpoints now answer HTTP 410. (A person can instead buy on the item's web_url in a browser.) " +
+      "No SoapBox account or API key is required — the payment IS the " +
+      "credential (https://github.com/coinbase/x402). SoapBox is the Merchant of Record: the church keeps 70% of " +
+      "net and SoapBox takes 30%. This is a content SALE, never a donation — donations go 100% to the church via " +
+      "give_to_church. Works for a single sermon (sermon_id) or a whole series (bundle_id). " +
       "Two-step, exactly per spec: (1) call with just the sermon_id (or bundle_id) and NO payment to get back the " +
       "HTTP-402 payment requirements — the USDC amount, asset, network ('base'), and SoapBox's payTo receive " +
-      "address. (2) Send EXACTLY maxAmountRequired USDC on Base to payTo — any other amount is refused. Sign the " +
+      "address. (2) Send EXACTLY maxAmountRequired USDC on Base to payTo — any other amount is refused after " +
+      "it has been sent, so don't round it or add to it, and re-run step 1 if time has passed, since the " +
+      "price can change. Sign the " +
       "402's onchainPayment.message (your tx hash in lower case, and the item) with the wallet that paid, then " +
       "call again with x_payment set to base64 of {\"txHash\":\"0x...\",\"signature\":\"0x...\"} — SoapBox checks " +
       "the on-chain transfer came from the signing wallet, records the sale (church keeps 70%), and returns the " +
@@ -284,17 +260,22 @@ const TOOLS = [
     },
   },
   {
-    name: "get_credit_balance",
+    name: "get_api_key_status",
     description:
-      "Check how many marketplace credits your API key has (in cents) for buying paid sermon access, plus your " +
-      "tier and daily rate limit. Top-ups are done via the topup API action or the SoapBox developer portal.",
+      "Report this API key's tier and daily rate limit — how many calls you have per day, not what you can " +
+      "afford. Nothing here gates a purchase: paid sermons and bundles are bought per-call with pay_with_x402 " +
+      "(USDC on Base), which needs no key and no balance at all. " +
+      "This tool was called get_credit_balance until the prepaid marketplace-credit wallet was retired on " +
+      "2026-07-15; the old name still works but is no longer listed, and the marketplace_credits_cents field it " +
+      "returns is always 0 and means nothing. Do not read it as 'out of funds'.",
     inputSchema: { type: "object", properties: {} },
   },
   {
     name: "browse_catalog",
     description:
       "Browse purchasable faith-content products on SoapBox (currently consented sermons; reading-plan and " +
-      "devotional bundles coming). Returns products with id, title, church, and price. Then buy with purchase_sermon. " +
+      "devotional bundles coming). Returns products with id, title, church, and price. Then pay for one with " +
+      "pay_with_x402 (USDC on Base). " +
       "Optional church_id and text filter. No key required.",
     inputSchema: {
       type: "object",
@@ -377,14 +358,15 @@ const TOOL_ACTION: Record<string, string> = {
   ask_ora: "ora",
   search_sermons: "sermon_search",
   get_sermon: "sermon_get",
-  purchase_sermon: "sermon_purchase",
+  get_api_key_status: "balance",
+  // Undocumented alias: agents wired to the pre-2.0.0 name keep working, but it
+  // is absent from TOOLS so tools/list no longer advertises a "credit balance".
   get_credit_balance: "balance",
   get_faith_context: "context",
   get_lectionary: "lectionary",
   synthesize_speech: "tts",
   browse_catalog: "catalog",
   score_doctrinal_fit: "doctrine_fit",
-  purchase_bundle: "bundle_purchase",
 };
 
 // (FREE_TOOLS updated below to include get_lectionary)
@@ -407,7 +389,7 @@ const RESOURCES = [
     description:
       "The live catalog of purchasable faith content on SoapBox — sermons, reading plans, books, " +
       "bundles, and physical goods. Each item has a title, type, description, price, and a web_url. " +
-      "Read this to discover what's available; buy with the purchase_sermon / purchase_bundle tools.",
+      "Read this to discover what's available; pay for an item with the pay_with_x402 tool (USDC on Base).",
     mimeType: "application/json",
   },
 ];
@@ -518,7 +500,7 @@ Deno.serve(async (req: Request) => {
       // Free read tools work with no key (faith-content-api enforces the same set
       // + a per-IP limit). Money/consent tools require a key.
       if (!apiKey && !FREE_TOOLS.has(name)) {
-        return json(rpcResult(id, { content: [{ type: "text", text: `Tool '${name}' needs a SoapBox API key (Authorization: Bearer <key>). Free tools (${[...FREE_TOOLS].join(", ")}) need none. Get a key at https://soapboxsuperapp.com/developers` }], isError: true }));
+        return json(rpcResult(id, { content: [{ type: "text", text: `Tool '${name}' needs a SoapBox API key (Authorization: Bearer <key>). Free tools (${[...FREE_TOOLS].join(", ")}) and pay_with_x402 need none. Get a key at https://soapboxsuperapp.com/developers` }], isError: true }));
       }
       const args = (params?.arguments ?? {}) as Record<string, unknown>;
       const { ok, data } = await callApi(apiKey, action, args);
