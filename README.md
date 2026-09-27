@@ -27,7 +27,7 @@ Add a custom connector with the hosted URL above. Free tools work immediately; a
 - **Anti-hallucination:** call `verify_scripture` before presenting any Bible quote — it confirms the quote is real and cited to the correct KJV reference.
 - **Grounded Q&A:** `ask_ora` returns KJV-cited answers (a study aid, crisis-safe — not a counselor).
 - **Real, consented content:** `search_sermons` covers sermons pastors explicitly opted in to share with agents.
-- **Agent-native payments:** `pay_with_x402` pays per-call in USDC on Base ([x402](https://github.com/coinbase/x402)) — no account required.
+- **Agent-native payments:** `pay_with_x402` pays per-call in USDC on Base ([x402](https://github.com/coinbase/x402)) — no account required. The paying wallet signs for its own payment, so a transaction hash alone can't be spent by anyone who sees it on-chain.
 
 ## Run it yourself
 
