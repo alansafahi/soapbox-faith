@@ -241,7 +241,9 @@ const TOOLS = [
       "give_to_church. Works for a single sermon (sermon_id) or a whole series (bundle_id). " +
       "Two-step, exactly per spec: (1) call with just the sermon_id (or bundle_id) and NO payment to get back the " +
       "HTTP-402 payment requirements — the USDC amount, asset, network ('base'), and SoapBox's payTo receive " +
-      "address. (2) Send EXACTLY maxAmountRequired USDC on Base to payTo — any other amount is refused. Sign the " +
+      "address. (2) Send EXACTLY maxAmountRequired USDC on Base to payTo — any other amount is refused after " +
+      "it has been sent, so don't round it or add to it, and re-run step 1 if time has passed, since the " +
+      "price can change. Sign the " +
       "402's onchainPayment.message (your tx hash in lower case, and the item) with the wallet that paid, then " +
       "call again with x_payment set to base64 of {\"txHash\":\"0x...\",\"signature\":\"0x...\"} — SoapBox checks " +
       "the on-chain transfer came from the signing wallet, records the sale (church keeps 70%), and returns the " +
